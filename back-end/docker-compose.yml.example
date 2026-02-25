@@ -1,0 +1,24 @@
+services:
+  DOCKER_NAME:
+    env_file: ".env"
+    container_name: ${DOCKER_NAME}
+    restart: always
+    environment:
+      TZ: America/Mexico_City
+    build:
+      dockerfile: Dockerfile
+    volumes:
+      - ./app:/usr/src/app
+      - ./app/files:/usr/src/files
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.${DOCKER_NAME}.rule=Host(`${END_POINT}`)"
+      - "traefik.http.services.${DOCKER_NAME}.loadbalancer.server.port=${API_PORT}"
+      - "traefik.http.routers.${DOCKER_NAME}.entrypoints=web"
+    networks:
+      local_network: {}
+
+networks:
+  local_network:
+    external: true
+    name: ${DOCKER_EXTERNAL_NETWORK}
