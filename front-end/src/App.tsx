@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Trash2, FileText, Download, Edit2, Eye, Clock } from 'lucide-react';
+import { Plus, Trash2, FileText, Download, Edit2, Clock } from 'lucide-react';
 
 interface Item {
   specifications: string;
@@ -44,9 +44,10 @@ interface BudgetItemDB {
   amount: number;
 }
 
+const API_URL = 'http://localhost:8000/budget';
+
 export default function BudgetForm() {
   const [loading, setLoading] = useState(false);
-  const [apiUrl, setApiUrl] = useState('http://localhost:8000/budget');
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [savedBudgets, setSavedBudgets] = useState<BudgetResponse[]>([]);
   const [showHistory, setShowHistory] = useState(false);
@@ -75,26 +76,29 @@ export default function BudgetForm() {
 
   const loadBudgets = async () => {
     try {
-      const response = await fetch(`${apiUrl}/presupuestos`);
+      const response = await fetch(API_URL);
       if (response.ok) {
         const data = await response.json();
         setSavedBudgets(data);
         setShowHistory(true);
+      } else {
+        console.error('Error al cargar presupuestos:', response.status);
+        alert('Error al cargar el historial de presupuestos');
       }
     } catch (error) {
       console.error('Error al cargar presupuestos:', error);
+      alert('Error de conexión al cargar el historial');
     }
   };
 
   const loadBudgetDetails = async (budgetId: number) => {
     try {
-      const response = await fetch(`${apiUrl}/presupuesto/${budgetId}`);
+      const response = await fetch(`${API_URL}/${budgetId}`);
       if (response.ok) {
         const budgetData: BudgetResponse = await response.json();
         
-        console.log('Datos recibidos:', budgetData); // Debug
+        console.log('Datos recibidos:', budgetData);
         
-        // Cargar datos generales y partidas
         const loadedItems: Item[] = budgetData.items?.map(item => ({
           specifications: item.specifications,
           unit: item.unit,
@@ -102,7 +106,7 @@ export default function BudgetForm() {
           unit_price: Number(item.unit_price)
         })) || [];
         
-        console.log('Partidas cargadas:', loadedItems); // Debug
+        console.log('Partidas cargadas:', loadedItems);
         
         setBudget({
           company: budgetData.company || '',
@@ -114,10 +118,7 @@ export default function BudgetForm() {
           acceptance_text: budgetData.acceptance_text || 'Acepto(amos) y autorizo(amos) para su realización'
         });
         
-        // Cerrar modal de historial
         setShowHistory(false);
-        
-        // Scroll hacia arriba
         window.scrollTo({ top: 0, behavior: 'smooth' });
         
         alert(`Presupuesto #${budgetId} cargado con ${loadedItems.length} partidas para edición`);
@@ -207,7 +208,7 @@ export default function BudgetForm() {
 
   const downloadBudget = async (budgetId: number, filename: string) => {
     try {
-      const response = await fetch(`${apiUrl}/descargar/${budgetId}`);
+      const response = await fetch(`${API_URL}/${budgetId}/pdf`);
       if (response.ok) {
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
@@ -228,11 +229,6 @@ export default function BudgetForm() {
   };
 
   const handleSubmit = async () => {
-    if (!budget.company || !budget.attention || !budget.address || !budget.work_address) {
-      alert('Por favor completa todos los campos requeridos');
-      return;
-    }
-
     if (budget.items.length === 0) {
       alert('Debes agregar al menos una partida');
       return;
@@ -241,24 +237,31 @@ export default function BudgetForm() {
     setLoading(true);
 
     try {
-      const response = await fetch('http://localhost:8000/budget', {
+      const budgetData = {
+        company: budget.company.trim() || null,
+        address: budget.address.trim() || null,
+        attention: budget.attention.trim() || null,
+        work_address: budget.work_address.trim() || null,
+        items: budget.items,
+        advance: budget.advance || 0,
+        acceptance_text: budget.acceptance_text || 'Acepto(amos) y autorizo(amos) para su realización'
+      };
+
+      const response = await fetch(API_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(budget),
+        body: JSON.stringify(budgetData),
       });
 
       if (response.ok) {
         const budgetResponse: BudgetResponse = await response.json();
         
-        // Descargar el PDF automáticamente
         await downloadBudget(budgetResponse.id, budgetResponse.pdf_filename);
         
-        // Mostrar mensaje de éxito
         alert(`Presupuesto #${budgetResponse.id} generado exitosamente`);
         
-        // Limpiar formulario
         setBudget({
           company: '',
           address: '',
@@ -269,14 +272,13 @@ export default function BudgetForm() {
           acceptance_text: 'Acepto(amos) y autorizo(amos) para su realización'
         });
         
-        // Recargar historial
-        loadBudgets();
+        await loadBudgets();
       } else {
         alert('Error al generar el presupuesto');
       }
     } catch (error) {
       console.error('Error:', error);
-      alert('Error al conectar con el servidor. Verifica la URL de la API.');
+      alert('Error al conectar con el servidor.');
     } finally {
       setLoading(false);
     }
@@ -433,42 +435,56 @@ export default function BudgetForm() {
                   <p className="text-gray-600 text-center py-8">No hay presupuestos guardados</p>
                 ) : (
                   <div className="space-y-3">
-                    {savedBudgets.map((saved) => (
-                      <div key={saved.id} className="bg-gray-50 p-4 rounded-lg border border-gray-200 hover:border-indigo-300 transition-colors">
-                        <div className="flex justify-between items-start gap-4">
-                          <div className="flex-1">
-                            <div className="font-semibold text-gray-800 text-lg mb-1">
-                              #{saved.id} - {saved.company || saved.attention}
+                    {savedBudgets.map((saved) => {
+                      // Construir el título dinámicamente
+                      const parts = ['#' + saved.id];
+                      const company = saved.company?.trim();
+                      const attention = saved.attention?.trim();
+                      
+                      if (company) parts.push(company);
+                      if (attention) parts.push(attention);
+                      
+                      const title = parts.join(' - ');
+                      
+                      return (
+                        <div key={saved.id} className="bg-gray-50 p-4 rounded-lg border border-gray-200 hover:border-indigo-300 transition-colors">
+                          <div className="flex justify-between items-start gap-4">
+                            <div className="flex-1">
+                              <div className="font-semibold text-gray-800 text-lg mb-1">
+                                {title}
+                              </div>
+                              <div className="text-sm text-gray-600 mb-1">
+                                📅 {new Date(saved.created_at).toLocaleString('es-MX')}
+                              </div>
+                              {saved.work_address?.trim() && (
+                                <div className="text-sm text-gray-600 mb-1">
+                                  📍 {saved.work_address.trim()}
+                                </div>
+                              )}
+                              <div className="text-lg text-indigo-600 font-bold mt-2">
+                                Total: ${saved.total ? saved.total.toLocaleString('es-MX', { minimumFractionDigits: 2 }) : '0.00'}
+                              </div>
                             </div>
-                            <div className="text-sm text-gray-600 mb-1">
-                              📅 {new Date(saved.created_at).toLocaleString('es-MX')}
+                            <div className="flex flex-col gap-2">
+                              <button
+                                onClick={() => loadBudgetDetails(saved.id)}
+                                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors whitespace-nowrap"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                                Editar
+                              </button>
+                              <button
+                                onClick={() => downloadBudget(saved.id, saved.pdf_filename)}
+                                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors whitespace-nowrap"
+                              >
+                                <Download className="w-4 h-4" />
+                                Descargar
+                              </button>
                             </div>
-                            <div className="text-sm text-gray-600 mb-1">
-                              📍 {saved.work_address || 'Sin dirección de obra'}
-                            </div>
-                            <div className="text-lg text-indigo-600 font-bold mt-2">
-                              Total: ${saved.total.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
-                            </div>
-                          </div>
-                          <div className="flex flex-col gap-2">
-                            <button
-                              onClick={() => loadBudgetDetails(saved.id)}
-                              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors whitespace-nowrap"
-                            >
-                              <Edit2 className="w-4 h-4" />
-                              Editar
-                            </button>
-                            <button
-                              onClick={() => downloadBudget(saved.id, saved.pdf_filename)}
-                              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors whitespace-nowrap"
-                            >
-                              <Download className="w-4 h-4" />
-                              Descargar
-                            </button>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -476,7 +492,6 @@ export default function BudgetForm() {
           )}
 
           <div className="space-y-8">
-
             {/* Información General */}
             <section className="space-y-6">
               <h2 className="text-xl font-semibold text-gray-700 border-b pb-2">Información General</h2>
@@ -484,7 +499,7 @@ export default function BudgetForm() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Empresa *
+                    Empresa
                   </label>
                   <input
                     type="text"
@@ -497,7 +512,7 @@ export default function BudgetForm() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Atención *
+                    Atención
                   </label>
                   <input
                     type="text"
@@ -510,7 +525,7 @@ export default function BudgetForm() {
 
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Dirección de la Empresa *
+                    Dirección de la Empresa
                   </label>
                   <input
                     type="text"
@@ -523,7 +538,7 @@ export default function BudgetForm() {
 
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Dirección de la Obra *
+                    Dirección de la Obra
                   </label>
                   <input
                     type="text"
@@ -709,7 +724,7 @@ export default function BudgetForm() {
               <div className="mt-6">
                 <div className="max-w-md">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Anticipo (%) *
+                    Anticipo (%)
                   </label>
                   <input
                     type="number"
