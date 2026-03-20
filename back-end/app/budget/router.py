@@ -45,6 +45,21 @@ router = APIRouter(
 )
 db_dependency: type[Session] = Annotated[Session, Depends(get_db)]
 
+# Configurar locale para México
+try:
+    locale.setlocale(locale.LC_ALL, 'es_MX.UTF-8')
+except locale.Error:
+    try:
+        locale.setlocale(locale.LC_ALL, 'es_MX')
+    except locale.Error:
+        try:
+            # Fallback para Windows
+            locale.setlocale(locale.LC_ALL, 'Spanish_Mexico.1252')
+        except locale.Error:
+            # Si todo falla, usar locale por defecto
+            print("Warning: Could not set Spanish locale, using default")
+            locale.setlocale(locale.LC_ALL, '')
+
 
 # ------------------------------------------- Functions ----------------------------------------------------------
 def header_footer(
@@ -177,10 +192,10 @@ def generate_budget(
         )
 
         general_data = [
-            [f"Empresa: {data.company}", Paragraph("PRESUPUESTO", header_style)],
-            [Paragraph(f"Dirección: {data.address}", address_style), ""],
-            [f"Atención: {data.attention}", Paragraph("FECHA", header_style)],
-            [Paragraph(f"Dirección de la Obra: {data.work_address}", address_style), date_display]
+            [f"Empresa: {' ' if data.company is None else data.company}", Paragraph("PRESUPUESTO", header_style)],
+            [Paragraph(f"Dirección: {' ' if data.address is None else data.address}", address_style), ""],
+            [f"Atención: {' ' if data.attention is None else data.attention}", Paragraph("FECHA", header_style)],
+            [Paragraph(f"Dirección de la Obra: {' ' if data.work_address is None else data.work_address}", address_style), date_display]
         ]
 
         general_col_widths = [total_width * 0.7, total_width * 0.3]

@@ -44,7 +44,7 @@ interface BudgetItemDB {
   amount: number;
 }
 
-const API_URL = 'http://localhost:8000/budget';
+const API_URL = 'http://localhost:8800/budget';
 
 export default function BudgetForm() {
   const [loading, setLoading] = useState(false);
@@ -115,7 +115,7 @@ export default function BudgetForm() {
           work_address: budgetData.work_address || '',
           items: loadedItems,
           advance: Number(budgetData.advance) || 0,
-          acceptance_text: budgetData.acceptance_text || 'Acepto(amos) y autorizo(amos) para su realización'
+          acceptance_text: 'Acepto(amos) y autorizo(amos) para su realización'
         });
         
         setShowHistory(false);
